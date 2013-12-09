@@ -31,12 +31,29 @@ app.get("/client", function(req, res) {
 });
 
 // create and start io server thing
+
+var clients = {};
+
 var server = http.createServer(app);
     io = io.listen(server);
 
-    io.sockets.on('connection', function(client) {
+    io.sockets.on("connection", function(client) {
+
+        var userID = client.id;
+        clients.client = userID;
+
+        console.log(clients);
+        client.broadcast.emit("usersUpdated", clients);
+
         client.on("save", function(data) {
             client.broadcast.emit("update", data);
+
+        });
+
+        client.on("disconnect", function(){
+            io.sockets.emit("disconnect");
+            delete clients.userID;
+            console.log(clients);
 
         });
     });
