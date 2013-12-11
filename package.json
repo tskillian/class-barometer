@@ -19,8 +19,5 @@
     "grunt-cli": "~0.1.11",
     "grunt-contrib-jshint": "~0.7.2",
     "grunt-contrib-copy": "~0.4.1"
-  },
-  "scripts": {
-    "postinstall": "bower install && grunt copy"
   }
 }
