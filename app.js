@@ -7,21 +7,45 @@ var path = require("path"),
 
 
 // The server holds the state of the classrooms in this global object. 
+// "schema":
+// Classrooms: {
+//     classroomId: {
+//         clientId: ##id from websocket##
+//     }
+// }
 var Classrooms = {};
 
-// functions that modify the Classrooms object
-function addTeacher(classroomId, clientId) {
+//  the server holds student names associated with websockets in this object
+//  "schema":
+//  nameRegister: {
+//      classroomId: {
+//          ##id from websocket##: ##student name##
+//      }
+//  }
+var nameRegister = {};
 
-    Classrooms[classroomId][clientId] = {status: "none", comment: ""};
-    // 
+// functions that modify the Classrooms and nameRegister objects
+
+// function addTeacher(classroomId, clientId) {
+// !!!! might not need this. yet?
+// }
+function createClassroom(classroomId) {
+    Classrooms[classroomId] = {};
+    nameRegister[classroomId] = {};
 }
-function addStudent(classroomId, clientId) {
-    if (!Classrooms[classroomId]) {
-        Classrooms[classroomId] = {};
-    }
+function removeClassroom(classroomId) {
+    // disconnect all sockets?
+    delete Classrooms[classroomId];
+    delete nameRegister[classroomId];
+}
+function addStudent(classroomId, clientId, studentName) {
+    // work around until teacher creating classrooms is working
+    // replace with error message about no class to join?
+    // if (!Classrooms[classroomId]) {
+    //     createClassroom(classroomId)
+    // }
     Classrooms[classroomId][clientId] = {status: "none", comment: ""};
-    console.log(Classrooms);
-    // [classroomId]
+    nameRegister[classroomId][clientId] = studentName;
 }
 function setStatus(classroomId, clientId, updatedStatus) {
     Classrooms[classroomId][clientId].status = updatedStatus;
@@ -33,7 +57,7 @@ function setComment(classroomId, clientId, updatedComment) {
 }
 function removeClient(classroomId, clientId) {
     delete Classrooms[classroomId][clientId];
-    // [classroomId]
+    delete nameRegister[classroomId][clientId];
 }
 
 // ExpressJS Server Definition
@@ -43,49 +67,77 @@ app.set("views", path.join(__dirname, ""))
    .use(express.static(path.join(__dirname, "js")));
 
 app.get("/", function(req, res) {
+    console.log("newindex hit");
+    res.render("newIndex");
+});
+
+app.get("/oldIndex", function(req, res) {
     console.log("index hit");
     res.render("index");
 });
 
-app.get("/server", function(req, res) {
-    console.log("server hit");
-    //res.render("server");
+app.get("/student", function(req, res) {
+    console.log("student route hit");
+    res.render("student");
 });
 
-app.get("/client", function(req, res) {
-    console.log("server hit");
-    //res.render("client");
+app.get("/teacher", function(req, res) {
+    console.log("teacher route hit");
+    res.render("teacher");
 });
 
-// create and start io server thing
+// create app server, wrap it in websocket server
 var server = http.createServer(app);
     io = io.listen(server);
 
-    io.sockets.on('connection', function(client) {
-
-
-        client.on('joinClassroom', function(classroomId){
-            client.join(classroomId);
-            addStudent(classroomId, client.id)
-            io.sockets.in(classroomId).emit("update", Classrooms[classroomId]);
-        
-            client.on('setStatus', function(status) {
-                setStatus(classroomId, client.id, status);
-                io.sockets.in(classroomId).emit("update", Classrooms[classroomId]);
-            });
-
-            client.on('setComment', function(comment) {
-                setComment(classroomId, client.id, comment);
-                io.sockets.in(classroomId).emit("update", Classrooms[classroomId]);
-            });
-
-            client.on('disconnect', function(){
-                removeClient(classroomId, client.id);
-                io.sockets.in(classroomId).emit("update", Classrooms[classroomId]);
-            });
-        });
-                
+// websocket behavior
+io.sockets.on('connection', function(client) {
+    //create classroom currently before joining as teacher, potential security hole
+    client.on('createClassroom', function(data){
+        console.log("creating classroom");
+        createClassroom(data);
+        console.log(Classrooms);
+        console.log(nameRegister);
     });
+
+    //teacher connection
+    client.on('teacherJoinClassroom', function(classroomId){
+        client.join(classroomId);
+        client.emit('update', Classrooms[classroomId]);
+        client.emit('nameUpdate', nameRegister[classroomId]);
+        console.log("created classroom");
+
+
+        io.sockets.on('studentJoinClassroom', function(){
+
+        })
+
+    });
+
+    // student connection
+    client.on('studentJoinClassroom', function(classroomId, studentName){
+        client.join(classroomId);
+        addStudent(classroomId, client.id, studentName);
+        io.sockets.in(classroomId).emit("update", Classrooms[classroomId]);
+                console.log(Classrooms);
+        console.log(nameRegister);
+        client.on('setStatus', function(status) {
+            setStatus(classroomId, client.id, status);
+            io.sockets.in(classroomId).emit("update", Classrooms[classroomId]);
+        });
+
+        client.on('setComment', function(comment) {
+            setComment(classroomId, client.id, comment);
+            io.sockets.in(classroomId).emit("update", Classrooms[classroomId]);
+        });
+
+        client.on('disconnect', function(){
+            removeClient(classroomId, client.id);
+            io.sockets.in(classroomId).emit("update", Classrooms[classroomId]);
+        });
+    });
+            
+});
 
 // start web server
 var port = process.env.PORT || 3000;
